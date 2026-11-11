@@ -369,20 +369,35 @@ grep MULTICA_IMAGE_TAG .env
 </Step>
 <Step>
 
-### Back up Postgres
+### Back up data and configuration
 
-Migrations are forward-only, so take a dump before upgrading a deployment you care about:
+Migrations are forward-only, and data is permanent. For data consistency, stop the services before backing up:
 
 ```bash
-docker compose -f docker-compose.selfhost.yml exec -T postgres \
-  pg_dump -U multica multica > multica-backup.sql && gzip multica-backup.sql
+docker compose -f docker-compose.selfhost.yml down
 ```
 
-Use your own `POSTGRES_USER` / `POSTGRES_DB` from `.env` if you changed them from the `multica` defaults. Data lives in the named volume `multica_pgdata`, which survives `docker compose down` — but not `down -v`.
+Then back up the database, uploaded files, and environment configuration:
 
-<Callout type="warning">
-**Do not pipe `pg_dump` straight into `gzip`.** A shell reports the exit status of the *last* command in a pipeline, so `pg_dump … | gzip > backup.sql.gz` exits `0` even when the dump failed — leaving a perfectly valid 20-byte archive containing nothing. Redirecting to a file first makes `pg_dump`'s own exit status the one that counts, and `&&` only compresses a dump that actually succeeded.
-</Callout>
+1. **Back up the database**
+   ```bash
+   docker compose -f docker-compose.selfhost.yml run --rm postgres \
+     pg_dump -U multica -h postgres multica > multica-backup.sql && gzip multica-backup.sql
+   ```
+   (Verify your `.env` for `POSTGRES_USER`/`POSTGRES_DB` if you customized them).
+
+2. **Back up uploaded files**
+   Copy the `backend_uploads` volume contents:
+   ```bash
+   docker run --rm -v multica_backend_uploads:/volume -v $(pwd):/backup alpine \
+     tar -czf /backup/uploads-backup.tar.gz -C /volume .
+   ```
+
+3. **Back up configuration and secrets**
+   Copy your `.env` file to a secure, offline location.
+   <Callout type="warning">
+   **This file contains secrets** like `JWT_SECRET`, database passwords, and encryption keys. Store it securely; do not commit it to Git, output it in logs, or share it in support tickets.
+   </Callout>
 
 </Step>
 <Step>
