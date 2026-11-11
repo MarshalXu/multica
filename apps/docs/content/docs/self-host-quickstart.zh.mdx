@@ -368,20 +368,36 @@ grep MULTICA_IMAGE_TAG .env
 </Step>
 <Step>
 
-### 备份 Postgres
+### 备份数据与配置
 
-migration 只往前走、不回滚，所以正式环境升级前先导一份：
+Migration 不可回滚，且数据是持久的。为了数据一致性，备份前建议先停止服务：
 
 ```bash
-docker compose -f docker-compose.selfhost.yml exec -T postgres \
-  pg_dump -U multica multica > multica-backup.sql && gzip multica-backup.sql
+docker compose -f docker-compose.selfhost.yml down
 ```
 
-如果你改过 `POSTGRES_USER` / `POSTGRES_DB`，把 `multica` 换成 `.env` 里的实际值。数据存在名为 `multica_pgdata` 的 volume 里，`docker compose down` 不会删它，但 `down -v` 会。
+然后备份数据库、上传文件和环境变量配置：
 
-<Callout type="warning">
-**不要把 `pg_dump` 直接管道接给 `gzip`。** shell 取的是管道里**最后一条**命令的退出码，所以 `pg_dump ... | gzip > backup.sql.gz` 在导出失败时照样返回 `0`，留下一个格式完全合法、但里面什么都没有的 20 字节压缩包。先重定向到文件，`pg_dump` 自己的退出码才算数，`&&` 也只会压缩真正成功的那份导出。
-</Callout>
+1. **备份数据库**
+   使用 `pg_dump` 进行导出：
+   ```bash
+   docker compose -f docker-compose.selfhost.yml run --rm postgres \
+     pg_dump -U multica -h postgres multica > multica-backup.sql && gzip multica-backup.sql
+   ```
+   (如果修改过 `POSTGRES_USER` 或 `POSTGRES_DB`，请使用 `.env` 中的实际值)。
+
+2. **备份上传附件**
+   复制 `backend_uploads` 数据卷的内容：
+   ```bash
+   docker run --rm -v multica_backend_uploads:/volume -v $(pwd):/backup alpine \
+     tar -czf /backup/uploads-backup.tar.gz -C /volume .
+   ```
+
+3. **备份配置与密钥**
+   将 `.env` 文件复制到安全、离线的地方。
+   <Callout type="warning">
+   **此文件包含 `JWT_SECRET`、数据库密码和加密密钥等敏感信息**，请妥善保存。请勿提交至 Git，不要在日志中输出，也不要在 Issue/PR 中公开。
+   </Callout>
 
 </Step>
 <Step>
