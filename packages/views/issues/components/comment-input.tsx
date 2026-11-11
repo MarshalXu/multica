@@ -253,6 +253,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation }: Comme
           value={persistedDraft ?? content}
           onReady={lazy.onReady}
           placeholder={t(($) => $.comment.leave_comment_placeholder)}
+          pasteAsFileThreshold={100000}
           onUpdate={(md) => {
             setContent(md);
             setIsEmpty(!md.trim());
